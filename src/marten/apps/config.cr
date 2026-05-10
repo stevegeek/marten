@@ -42,7 +42,7 @@ module Marten
           raise Errors::InvalidAppConfig.new("App labels can only contain lowercase letters and underscores")
         end
 
-        if label.to_s == MainConfig::RESERVED_LABEL
+        if self != MainConfig && label.to_s == MainConfig.label
           raise Errors::InvalidAppConfig.new("Apps cannot use the 'main' reserved label")
         end
       end

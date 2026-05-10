@@ -66,7 +66,7 @@ module Marten
 
       # Returns the main application config, which corresponds to the standard `src/` folder.
       def main
-        get(MainConfig::RESERVED_LABEL)
+        get(MainConfig.label)
       end
 
       # Populate the app config registry from the list of the project installed apps.

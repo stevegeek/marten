@@ -113,6 +113,18 @@ The default log level used by the application. Any severity defined in the [`Log
 This setting exclusively controls the log level for the Marten server. To set the log level for [management commands](../management-commands.md), use the `--log-level` command option (see [Shared options](../management-commands.md#shared-options)).
 :::
 
+### `main_app_label`
+
+Default: `"main"`
+
+The label of the main application.
+
+The [main application](../applications.md#the-main-application) is the application that corresponds to the `src` folder of the project. This setting allows to configure the label of the main application, which also impacts the names of the underlying model tables.
+
+:::warning
+Changing the main application label after the project has been initialized will impact the names of the underlying model tables. This can be an option if you don't have any models defined in the `src` folder yet or for new projects, but it is not recommended to change it when the project already has models defined in the main application as Marten **will not** automatically rename model tables to match the new label.
+:::
+
 ### `middleware`
 
 Default: `[] of Marten::Middleware.class`

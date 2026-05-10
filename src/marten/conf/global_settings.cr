@@ -67,6 +67,9 @@ module Marten
       # The default log level used by the application.
       getter log_level
 
+      # Returns the label of the main application.
+      getter main_app_label
+
       # Returns the list of middlewares used by the application.
       getter middleware
 
@@ -165,6 +168,9 @@ module Marten
 
       # Allows to set the default log level that will be used by the application (defaults to info).
       setter log_level
+
+      # Allows to set the label of the main application.
+      setter main_app_label
 
       # Allows to set the port the HTTP server running the application will be listening on.
       setter port
@@ -266,6 +272,7 @@ module Marten
         @host = "127.0.0.1"
         @installed_apps = Array(Marten::Apps::Config.class).new
         @log_level = ::Log::Severity::Info
+        @main_app_label = Apps::MainConfig::DEFAULT_LABEL
         @middleware = Array(Marten::Middleware.class).new
         @port = 8000
         @port_reuse = true
@@ -436,6 +443,7 @@ module Marten
 
       protected def setup
         setup_log_backend
+        setup_main_app_label
         setup_db_connections
       end
 
@@ -450,6 +458,10 @@ module Marten
         end
 
         sessions.validate
+      end
+
+      private def setup_main_app_label
+        Apps::MainConfig.label(main_app_label)
       end
     end
   end

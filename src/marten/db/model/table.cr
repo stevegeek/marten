@@ -74,8 +74,11 @@ module Marten
           # associated with the considered model and the class name of the model.
           def db_table
             @@db_table ||= String.build do |s|
-              s << app_config.label.downcase
-              s << '_'
+              unless app_config.label.blank?
+                s << app_config.label.downcase
+                s << '_'
+              end
+
               s << (model_name = name.split("::").last.underscore)
             end
           end

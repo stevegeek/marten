@@ -468,6 +468,27 @@ describe Marten::Conf::GlobalSettings do
     end
   end
 
+  describe "#main_app_label" do
+    it "returns the main app label by default" do
+      global_settings = Marten::Conf::GlobalSettings.new
+      global_settings.main_app_label.should eq Marten::Apps::MainConfig::DEFAULT_LABEL
+    end
+
+    it "returns the configured main app label if explicitly set" do
+      global_settings = Marten::Conf::GlobalSettings.new
+      global_settings.main_app_label = "test"
+      global_settings.main_app_label.should eq "test"
+    end
+  end
+
+  describe "#main_app_label=" do
+    it "allows to configure the main app label" do
+      global_settings = Marten::Conf::GlobalSettings.new
+      global_settings.main_app_label = "test"
+      global_settings.main_app_label.should eq "test"
+    end
+  end
+
   describe "#media_files" do
     it "returns the media files configuration" do
       global_settings = Marten::Conf::GlobalSettings.new

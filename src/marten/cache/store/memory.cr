@@ -11,6 +11,7 @@ module Marten
       # network. However, compression can be enabled if desired.
       class Memory < Base
         @data = {} of String => String
+        @mutex = Mutex.new(:reentrant)
 
         def initialize(
           @namespace : String? = nil,
@@ -23,7 +24,7 @@ module Marten
         end
 
         def clear : Nil
-          @data.clear
+          @mutex.synchronize { @data.clear }
         end
 
         def decrement(
@@ -49,7 +50,7 @@ module Marten
         end
 
         def delete_entry(key : String) : Bool
-          deleted_entry = @data.delete(key)
+          deleted_entry = @mutex.synchronize { @data.delete(key) }
           !!deleted_entry
         end
 
@@ -76,7 +77,7 @@ module Marten
         end
 
         def read_entry(key : String) : String?
-          data[key]?
+          @mutex.synchronize { data[key]? }
         end
 
         def write_entry(
@@ -85,7 +86,7 @@ module Marten
           expires_in : Time::Span? = nil,
           race_condition_ttl : Time::Span? = nil,
         )
-          data[key] = value
+          @mutex.synchronize { data[key] = value }
           true
         end
 
@@ -101,26 +102,30 @@ module Marten
           compress : Bool? = nil,
           compress_threshold : Int32? = nil,
         )
-          normalized_key = normalize_key(key.to_s)
-          entry = deserialize_entry(read_entry(normalized_key))
+          # The read-modify-write below must be atomic: without this, concurrent increments/decrements
+          # racing on the same key lose updates (and corrupt the underlying Hash under -Dpreview_mt).
+          @mutex.synchronize do
+            normalized_key = normalize_key(key.to_s)
+            entry = deserialize_entry(read_entry(normalized_key))
 
-          if entry.nil? || entry.expired? || entry.mismatched?(version || self.version)
-            write(
-              key: key,
-              value: amount.to_s,
-              expires_at: expires_at,
-              expires_in: expires_in,
-              version: version,
-              race_condition_ttl: race_condition_ttl,
-              compress: compress,
-              compress_threshold: compress_threshold
-            )
-            amount
-          else
-            new_amount = entry.value.to_i + amount
-            entry = Entry.new(new_amount.to_s, expires_at: entry.expires_at, version: entry.version)
-            write_entry(normalized_key, serialize_entry(entry))
-            new_amount
+            if entry.nil? || entry.expired? || entry.mismatched?(version || self.version)
+              write(
+                key: key,
+                value: amount.to_s,
+                expires_at: expires_at,
+                expires_in: expires_in,
+                version: version,
+                race_condition_ttl: race_condition_ttl,
+                compress: compress,
+                compress_threshold: compress_threshold
+              )
+              amount
+            else
+              new_amount = entry.value.to_i + amount
+              entry = Entry.new(new_amount.to_s, expires_at: entry.expires_at, version: entry.version)
+              write_entry(normalized_key, serialize_entry(entry))
+              new_amount
+            end
           end
         end
       end

@@ -9,6 +9,8 @@ module Marten
         @db : ::DB::Database?
         @url : String
         @transactions = {} of UInt64 => Transaction
+        @transactions_mutex = Mutex.new
+        @db_mutex = Mutex.new
 
         def initialize(@config : Conf::GlobalSettings::Database)
           @url = build_url
@@ -184,13 +186,15 @@ module Marten
         end
 
         protected def db
-          @db ||= ::DB.open(@url)
+          # Guarded so concurrent fibers (under -Dpreview_mt) can't both open a database and leak a pool.
+          # The mutex cost is negligible next to the DB I/O that follows.
+          @db_mutex.synchronize { @db ||= ::DB.open(@url) }
         end
 
         private getter transactions
 
         private def current_transaction
-          transactions[Fiber.current.object_id]?
+          @transactions_mutex.synchronize { transactions[Fiber.current.object_id]? }
         end
 
         private def mark_current_transaction_as_rolled_back
@@ -200,7 +204,7 @@ module Marten
         private def new_transaction(&)
           using_connection do |conn|
             conn.transaction do |tx|
-              transactions[Fiber.current.object_id] ||= Transaction.new(tx)
+              @transactions_mutex.synchronize { transactions[Fiber.current.object_id] ||= Transaction.new(tx) }
               yield
             end
           end
@@ -217,7 +221,10 @@ module Marten
 
         private def release_current_transaction
           current_transaction.try(&.notify_observers)
-          transactions.delete(Fiber.current.object_id)
+        ensure
+          # Always drop the per-fiber entry even if an observer raises, otherwise a stale Transaction
+          # lingers and a later fiber reusing this fiber's object_id would alias it.
+          @transactions_mutex.synchronize { transactions.delete(Fiber.current.object_id) }
         end
 
         private def using_connection(&)

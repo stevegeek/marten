@@ -16,6 +16,7 @@
 *.db
 .*.swp
 /shard.lock
+/shard.override.yml
 /tmp/
 
 # Specs

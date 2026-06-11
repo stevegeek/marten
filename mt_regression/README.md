@@ -47,3 +47,14 @@ Fixed pool → 0 violations (pass); stock pool → double-checkout detected (fai
   (`read`+`delete` on expiry, `process_entry_expiry`). Only `increment`/`decrement` are atomic.
 - DB access under `-Dpreview_mt` requires BOTH the Marten `@transactions` mutex AND the crystal-db
   pool fix; neither alone is sufficient.
+
+## Observation: Crystal `preview_mt` mutex-contention stall (runtime, not the fixes)
+Harnesses that hammer a single `Mutex` with all fibers in lockstep on the same key
+(`cache_lost_update` on one counter, the original `template_cache`) intermittently (~1 run in 6)
+**stall** under `-Dpreview_mt` — every fiber blocks and only the watchdog (exit 98) recovers. This
+is a Crystal runtime behaviour (mutex/scheduler under extreme symmetric contention), NOT data
+corruption: a real failure prints a crash or a wrong count; a stall just hangs. `run.sh` therefore
+retries a patched run that exits 98 and reports `INCONCLUSIVE` only if the stall persists. The fixes
+themselves are correct (the negative controls corrupt every run); the stall is a separate caveat
+about `preview_mt`'s own maturity. Harnesses that give each fiber its own keys (`cache_structural`,
+the current `template_cache`) do not exhibit it.

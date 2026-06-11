@@ -5,12 +5,17 @@ module Marten
       class Cached < Base
         def initialize(@loaders : Array(Loader::Base))
           @templates_cache = Hash(String, Template).new
+          @mutex = Mutex.new
         end
 
         def get_template(template_name) : Template
-          template = @templates_cache[template_name]?
-          return template unless template.nil?
+          cached = @mutex.synchronize { @templates_cache[template_name]? }
+          return cached unless cached.nil?
 
+          # Load/compile outside the lock so concurrent first-renders of *different* templates don't
+          # serialize. Two fibers racing on the *same* uncached template may both compile it, but the
+          # atomic publish below keeps the cache consistent and every caller gets the same instance.
+          template = nil.as(Template?)
           @loaders.each do |loader|
             begin
               template = loader.get_template(template_name)
@@ -21,9 +26,8 @@ module Marten
             break unless template.nil?
           end
 
-          unless template.nil?
-            @templates_cache[template_name] = template
-            return template
+          if found = template
+            return @mutex.synchronize { @templates_cache[template_name] ||= found }
           end
 
           raise Errors::TemplateNotFound.new("Template #{template_name} could not be found")

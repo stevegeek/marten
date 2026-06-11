@@ -23,6 +23,9 @@ module Marten
           @@local_reverse_relations : Array(ReverseRelation) = [] of ReverseRelation
           @@parent_models : Array(Marten::DB::Model.class) = [] of Marten::DB::Model.class
           @@reverse_relation_contexts : Array(ReverseRelationContext) | Nil = nil
+          # Guards the lazy builds of @@field_contexts_map / @@reverse_relation_contexts, which are
+          # first triggered at request time during query building (unsafe to race under -Dpreview_mt).
+          @@meta_mutex : Mutex = Mutex.new
 
           @annotations = {} of String => Field::Any
 
@@ -232,37 +235,41 @@ module Marten
           end
 
           private def field_contexts_map
-            @@field_contexts_map ||= begin
-              map = {} of String => FieldContext
+            @@meta_mutex.synchronize { @@field_contexts_map ||= build_field_contexts_map }
+          end
 
-              @@parent_models.each do |parent_model|
-                parent_model.local_fields.each { |f| map[f.id] = FieldContext.new(f, parent_model) }
-                parent_model.local_relation_fields_per_relation_name.each do |k, v|
-                  map[k] = FieldContext.new(v, parent_model)
-                end
+          private def build_field_contexts_map
+            map = {} of String => FieldContext
+
+            @@parent_models.each do |parent_model|
+              parent_model.local_fields.each { |f| map[f.id] = FieldContext.new(f, parent_model) }
+              parent_model.local_relation_fields_per_relation_name.each do |k, v|
+                map[k] = FieldContext.new(v, parent_model)
               end
-
-              @@local_relation_fields_per_relation_name.each { |k, v| map[k] = FieldContext.new(v, self) }
-              @@local_fields.values.each { |f| map[f.id] = FieldContext.new(f, self) }
-
-              map
             end
+
+            @@local_relation_fields_per_relation_name.each { |k, v| map[k] = FieldContext.new(v, self) }
+            @@local_fields.values.each { |f| map[f.id] = FieldContext.new(f, self) }
+
+            map
           end
 
           private def reverse_relation_contexts
-            @@reverse_relation_contexts ||= begin
-              contexts = [] of ReverseRelationContext
+            @@meta_mutex.synchronize { @@reverse_relation_contexts ||= build_reverse_relation_contexts }
+          end
 
-              @@parent_models.each do |parent_model|
-                parent_model.local_reverse_relations.each do |r|
-                  contexts << ReverseRelationContext.new(r, parent_model)
-                end
+          private def build_reverse_relation_contexts
+            contexts = [] of ReverseRelationContext
+
+            @@parent_models.each do |parent_model|
+              parent_model.local_reverse_relations.each do |r|
+                contexts << ReverseRelationContext.new(r, parent_model)
               end
-
-              @@local_reverse_relations.each { |r| contexts << ReverseRelationContext.new(r, self) }
-
-              contexts
             end
+
+            @@local_reverse_relations.each { |r| contexts << ReverseRelationContext.new(r, self) }
+
+            contexts
           end
 
           private def _pk_field

@@ -4,6 +4,7 @@ module Marten
       # A development emailing backend that outputs details of delivered emails.
       class Development < Base
         class_getter delivered_emails = [] of Email
+        @@delivered_emails_mutex = Mutex.new
 
         getter? print_emails
 
@@ -13,7 +14,7 @@ module Marten
         end
 
         def deliver(email : Email) : Nil
-          @@delivered_emails << email if collect_emails?
+          @@delivered_emails_mutex.synchronize { @@delivered_emails << email } if collect_emails?
 
           return unless print_emails?
 

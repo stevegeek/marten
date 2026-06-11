@@ -7,6 +7,7 @@ module Marten
     class Engine
       @finders = [] of Finder::Base
       @loaded_manifests : Hash(String, String) | Nil = nil
+      @loaded_manifests_mutex = Mutex.new
       @manifests = [] of String
 
       getter finders
@@ -39,14 +40,16 @@ module Marten
       end
 
       private def loaded_manifests
-        @loaded_manifests ||= begin
-          h = {} of String => String
+        @loaded_manifests_mutex.synchronize do
+          @loaded_manifests ||= begin
+            h = {} of String => String
 
-          manifests.each do |path|
-            h.merge!(Hash(String, String).from_json(File.read(path)))
+            manifests.each do |path|
+              h.merge!(Hash(String, String).from_json(File.read(path)))
+            end
+
+            h
           end
-
-          h
         end
       end
     end

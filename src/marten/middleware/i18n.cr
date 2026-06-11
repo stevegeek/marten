@@ -60,12 +60,19 @@ module Marten
         end
       end
 
+      # Reentrant so downcased_available_locales can call available_locales while holding the lock.
+      @locales_mutex = Mutex.new(:reentrant)
+
       private def available_locales
-        @available_locales ||= Marten.settings.i18n.available_locales || [Marten.settings.i18n.default_locale]
+        @locales_mutex.synchronize do
+          @available_locales ||= Marten.settings.i18n.available_locales || [Marten.settings.i18n.default_locale]
+        end
       end
 
       private def downcased_available_locales
-        @downcased_available_locales ||= available_locales.map(&.downcase)
+        @locales_mutex.synchronize do
+          @downcased_available_locales ||= available_locales.map(&.downcase)
+        end
       end
 
       private def get_locale_from(request)

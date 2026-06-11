@@ -9,6 +9,7 @@ module Marten
     # For example a `POST` request with `_method=DELETE` in its body would be treated as a DELETE request.
     class MethodOverride < Middleware
       @allowed_method_sets : Set(String)?
+      @allowed_method_sets_mutex = Mutex.new
 
       def call(request : Marten::HTTP::Request, get_response : Proc(Marten::HTTP::Response)) : Marten::HTTP::Response
         if allowed?(request)
@@ -29,7 +30,9 @@ module Marten
       end
 
       private def allowed_method_sets
-        @allowed_method_sets ||= Marten.settings.method_override.allowed_methods.to_set
+        @allowed_method_sets_mutex.synchronize do
+          @allowed_method_sets ||= Marten.settings.method_override.allowed_methods.to_set
+        end
       end
 
       private def extract_override_method(request)

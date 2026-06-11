@@ -42,8 +42,12 @@ module Marten
         request.headers.fetch(:ACCEPT_ENCODING, "").matches?(GZIP_ACCEPT_ENCODING_RE)
       end
 
+      @expanded_assets_path_mutex = Mutex.new
+
       private def expanded_assets_path : String
-        @expanded_assets_path ||= Path[Marten.settings.assets.root].expand.to_s
+        @expanded_assets_path_mutex.synchronize do
+          @expanded_assets_path ||= Path[Marten.settings.assets.root].expand.to_s
+        end
       end
 
       private def compress_using_deflate(file : File, io : IO) : Nil

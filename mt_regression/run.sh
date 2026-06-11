@@ -24,6 +24,10 @@ run_with_timeout () {
   return $rc
 }
 
+# The fixes are committed on this branch, so the negative control reverts the file to its pre-fix
+# state at BASELINE (default origin/main) and restores it from HEAD afterwards.
+BASELINE="${BASELINE:-origin/main}"
+
 run_case () {        # name  src_file_to_revert  harness.cr
   local name="$1" src="$2" cr="$3" bin="/tmp/mtreg_$1"
   echo "==================== $name ===================="
@@ -31,15 +35,16 @@ run_case () {        # name  src_file_to_revert  harness.cr
   echo "-- patched (expect PASS) --"
   if "$bin"; then echo "  => PASS"; else echo "  => UNEXPECTED FAIL (exit $?)"; fi
 
-  echo "-- negative control: revert $src, rebuild, rerun (expect FAIL/crash) --"
-  git stash push -q -- "$src"
-  crystal build -Dpreview_mt -o "${bin}_neg" "mt_regression/$cr" 2>/dev/null || { echo "  (neg build failed)"; git stash pop -q; return 1; }
-  if run_with_timeout 45 "${bin}_neg"; then echo "  => UNEXPECTED PASS (lock may not be load-bearing!)"; else echo "  => FAILED as expected (exit $? ; crash/livelock killed)"; fi
-  git stash pop -q
+  echo "-- negative control: $src @ $BASELINE (pre-fix), rebuild, rerun (expect FAIL/crash) --"
+  if ! git show "$BASELINE:$src" > "$src" 2>/dev/null; then echo "  (could not load $BASELINE:$src)"; git checkout -q HEAD -- "$src"; return 1; fi
+  crystal build -Dpreview_mt -o "${bin}_neg" "mt_regression/$cr" 2>/dev/null || { echo "  (neg build failed)"; git checkout -q HEAD -- "$src"; return 1; }
+  if run_with_timeout 45 "${bin}_neg"; then echo "  => UNEXPECTED PASS (lock may not be load-bearing!)"; else echo "  => FAILED as expected (crash/livelock killed)"; fi
+  git checkout -q HEAD -- "$src"   # restore the committed, patched version
   echo ""
 }
 
 run_case cache_lost_update src/marten/cache/store/memory.cr     cache_lost_update.cr
 run_case cache_structural  src/marten/cache/store/memory.cr     cache_structural.cr
 run_case tx_hash           src/marten/db/connection/base.cr     tx_hash.cr
+run_case template_cache    src/marten/template/loader/cached.cr template_cache.cr
 echo "done."

@@ -263,7 +263,7 @@ describe Marten::DB::Field::Date do
       default_dt = Time.local
       field = Marten::DB::Field::Date.new("my_field", db_column: "my_field_col", default: default_dt)
       column = field.to_column
-      column.default.should eq default_dt.at_beginning_of_day
+      column.default.should eq Time.utc(default_dt.year, default_dt.month, default_dt.day)
     end
   end
 
@@ -291,7 +291,29 @@ describe Marten::DB::Field::Date do
 
       time = Time.local
       Timecop.freeze(time) do |frozen_time|
-        field.to_db(frozen_time).should eq frozen_time.at_beginning_of_day
+        field.to_db(frozen_time).should eq Time.utc(frozen_time.year, frozen_time.month, frozen_time.day)
+      end
+    end
+
+    it "returns a value whose date is the local date if the time zone has a positive UTC offset" do
+      paris_time_zone = Time::Location.load("Europe/Paris")
+
+      with_overridden_setting("time_zone", paris_time_zone) do
+        field = Marten::DB::Field::Date.new("my_field")
+        time = Time.local(2026, 7, 31, 14, 30, 0, location: paris_time_zone)
+
+        field.to_db(time).as(Time).to_s("%F").should eq "2026-07-31"
+      end
+    end
+
+    it "returns a value whose date is the local date if the time zone has a negative UTC offset" do
+      est_time_zone = Time::Location.load("EST")
+
+      with_overridden_setting("time_zone", est_time_zone) do
+        field = Marten::DB::Field::Date.new("my_field")
+        time = Time.local(2026, 7, 31, 22, 30, 0, location: est_time_zone)
+
+        field.to_db(time).as(Time).to_s("%F").should eq "2026-07-31"
       end
     end
 
@@ -300,6 +322,41 @@ describe Marten::DB::Field::Date do
 
       expect_raises(Marten::DB::Errors::UnexpectedFieldValue) do
         field.to_db(["foo", "bar"])
+      end
+    end
+  end
+
+  describe "date values persistence" do
+    it "preserves the local date when a record is saved and read back" do
+      paris_time_zone = Time::Location.load("Europe/Paris")
+
+      with_overridden_setting("time_zone", paris_time_zone) do
+        user = TestUser.create!(username: "jd1", email: "jd1@example.com", first_name: "John", last_name: "Doe")
+        profile = TestUserProfile.create!(
+          user: user,
+          milestone_on: Time.local(2026, 7, 31, 14, 30, 0, location: paris_time_zone)
+        )
+
+        TestUserProfile.get!(pk: profile.pk).milestone_on!.to_s("%F").should eq "2026-07-31"
+      end
+    end
+
+    it "does not shift the local date when a record is read back and saved again" do
+      paris_time_zone = Time::Location.load("Europe/Paris")
+
+      with_overridden_setting("time_zone", paris_time_zone) do
+        user = TestUser.create!(username: "jd1", email: "jd1@example.com", first_name: "John", last_name: "Doe")
+        profile = TestUserProfile.create!(
+          user: user,
+          milestone_on: Time.local(2026, 7, 31, 14, 30, 0, location: paris_time_zone)
+        )
+
+        2.times do
+          reloaded_profile = TestUserProfile.get!(pk: profile.pk)
+          reloaded_profile.save!
+        end
+
+        TestUserProfile.get!(pk: profile.pk).milestone_on!.to_s("%F").should eq "2026-07-31"
       end
     end
   end

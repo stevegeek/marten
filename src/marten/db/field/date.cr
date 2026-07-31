@@ -38,9 +38,9 @@ module Marten
           when Nil
             value.as?(Nil)
           when Time
-            value.in(Marten.settings.time_zone).as?(Time)
+            local_date(value).as?(Time)
           when ::String
-            parse_db_date_string(value).in(Marten.settings.time_zone)
+            local_date(parse_db_date_string(value))
           else
             raise_unexpected_field_value(value)
           end
@@ -78,19 +78,27 @@ module Marten
           when Nil
             nil
           when Time
-            value.at_beginning_of_day.to_utc
+            Time.utc(value.year, value.month, value.day)
           else
             raise_unexpected_field_value(value)
           end
         end
 
+        # Returns the local time corresponding to the calendar date of the passed time.
+        #
+        # The date carried by database values is time zone agnostic, so it must be reinterpreted in the project time
+        # zone instead of being converted to it: converting would shift the date itself.
+        private def local_date(value : Time) : Time
+          Time.local(value.year, value.month, value.day, location: Marten.settings.time_zone)
+        end
+
         private def parse_db_date_string(value : ::String) : Time
           if value.matches?(/\A\d{4}-\d{2}-\d{2}\z/)
-            Time.parse(value, "%F", Marten.settings.time_zone)
+            Time.parse_utc(value, "%F")
           elsif value.includes?(".")
-            Time.parse(value, "%F %H:%M:%S.%L", Marten.settings.time_zone).at_beginning_of_day
+            Time.parse_utc(value, "%F %H:%M:%S.%L")
           else
-            Time.parse(value, "%F %H:%M:%S", Marten.settings.time_zone).at_beginning_of_day
+            Time.parse_utc(value, "%F %H:%M:%S")
           end
         end
       end
